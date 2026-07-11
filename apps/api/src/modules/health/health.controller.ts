@@ -8,8 +8,10 @@ import {
 import { sql } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDb } from '../../database/database.module.js';
+import { Public } from '../security/decorators/public.decorator.js';
 
 @ApiTags('Health')
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(

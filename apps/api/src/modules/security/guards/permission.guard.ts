@@ -5,7 +5,8 @@ import type { Request } from 'express';
 import { getTenantIdFromRequest } from '../../../common/middleware/tenant-context.middleware.js';
 import { PERMISSION_KEY } from '../decorators/require-permission.decorator.js';
 import { PermissionEngine } from '../permission-engine.service.js';
-import type { PlatformPermissionCode } from '../permissions/platform.permissions.js';
+import type { PermissionCode } from '../permissions/permission.types.js';
+import { getAuthUser } from '../types/authenticated-request.js';
 
 @Injectable()
 export class PermissionGuard implements CanActivate {
@@ -14,10 +15,11 @@ export class PermissionGuard implements CanActivate {
     private readonly permissionEngine: PermissionEngine,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
-    const permission = this.reflector.getAllAndOverride<
-      PlatformPermissionCode | undefined
-    >(PERMISSION_KEY, [context.getHandler(), context.getClass()]);
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const permission = this.reflector.getAllAndOverride<PermissionCode | undefined>(
+      PERMISSION_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (!permission) {
       return true;
@@ -25,9 +27,11 @@ export class PermissionGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<Request>();
     const tenantId = getTenantIdFromRequest(request);
-    const actorId = request.headers['x-actor-id'] as string | undefined;
+    const authUser = getAuthUser(request);
+    const actorId =
+      authUser?.userId ?? (request.headers['x-actor-id'] as string | undefined);
 
-    this.permissionEngine.assertPermission(tenantId, permission, actorId);
+    await this.permissionEngine.assertPermission(tenantId, permission, actorId);
     return true;
   }
 }

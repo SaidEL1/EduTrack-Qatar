@@ -8,11 +8,19 @@ import { TenantContextMiddleware } from './common/middleware/tenant-context.midd
 import { DatabaseModule } from './database/database.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { IdentityModule } from './modules/identity/identity.module.js';
 import { PlatformModule } from './modules/platform/platform.module.js';
 import { SecurityModule } from './modules/security/security.module.js';
 
 @Module({
-  imports: [DatabaseModule, SecurityModule, HealthModule, AuditModule, PlatformModule],
+  imports: [
+    DatabaseModule,
+    IdentityModule,
+    SecurityModule,
+    HealthModule,
+    AuditModule,
+    PlatformModule,
+  ],
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },

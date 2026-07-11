@@ -6,7 +6,7 @@ export const TENANT_ID_HEADER = 'x-tenant-id';
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   use(request: Request, _response: Response, next: NextFunction): void {
-    const path = request.path;
+    const path = request.originalUrl.split('?')[0];
 
     if (this.isExempt(path, request.method)) {
       next();
@@ -25,12 +25,27 @@ export class TenantContextMiddleware implements NestMiddleware {
   }
 
   private isExempt(path: string, method: string): boolean {
-    if (path.startsWith('/health') || path.startsWith('/v1/docs')) {
-      return true;
+    const candidates = [path, path.startsWith('/v1') ? path.slice(3) : path];
+
+    for (const route of candidates) {
+      if (route.startsWith('/health') || route.startsWith('/docs')) {
+        return true;
+      }
+      if (
+        route.includes('/auth/login') ||
+        route.includes('/auth/refresh') ||
+        route.includes('/auth/logout')
+      ) {
+        return true;
+      }
+      if (
+        route.includes('/platform/tenants') &&
+        (method === 'GET' || method === 'POST')
+      ) {
+        return true;
+      }
     }
-    if (path === '/v1/platform/tenants' && (method === 'GET' || method === 'POST')) {
-      return true;
-    }
+
     return false;
   }
 }

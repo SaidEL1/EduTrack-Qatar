@@ -3,6 +3,7 @@ import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CORRELATION_ID_HEADER } from '../../common/middleware/correlation-id.middleware.js';
 import { TENANT_ID_HEADER } from '../../common/middleware/tenant-context.middleware.js';
+import { Public } from '../security/decorators/public.decorator.js';
 import { RequirePermission } from '../security/decorators/require-permission.decorator.js';
 import { PLATFORM_PERMISSIONS } from '../security/permissions/platform.permissions.js';
 
@@ -21,6 +22,7 @@ import { PlatformService } from './platform.service.js';
 export class PlatformController {
   constructor(private readonly platformService: PlatformService) {}
 
+  @Public()
   @Post('tenants')
   @ApiOperation({ summary: 'Provision tenant (operator)' })
   createTenant(
@@ -30,6 +32,7 @@ export class PlatformController {
     return this.platformService.createTenant(body, correlationId);
   }
 
+  @Public()
   @Get('tenants')
   @ApiOperation({ summary: 'List tenants (operator — Sprint 1 internal)' })
   listTenants() {

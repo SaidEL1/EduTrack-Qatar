@@ -1,37 +1,50 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 
-import type { PlatformPermissionCode } from './permissions/platform.permissions.js';
+import { RbacRepository } from '../identity/infrastructure/rbac.repository.js';
+
+import type { PermissionCode } from './permissions/permission.types.js';
 
 /**
- * Permission engine skeleton — full RBAC in Sprint 2 (FR-SET-003).
- * Sprint 1: system actor bypasses checks; tenant requests require header presence only.
+ * Permission engine — persisted RBAC with Redis cache (FR-SET-003 / TDR-007).
  */
 @Injectable()
 export class PermissionEngine {
-  private readonly tenantRolePermissions = new Map<
-    string,
-    Set<PlatformPermissionCode>
-  >();
+  constructor(private readonly rbacRepository: RbacRepository) {}
 
+  /** @deprecated Use bootstrapTenantAdminRole via RbacRepository during tenant provisioning */
   seedTenantPermissions(
-    tenantId: string,
-    permissions: readonly PlatformPermissionCode[],
+    _tenantId: string,
+    _permissions: readonly PermissionCode[],
   ): void {
-    this.tenantRolePermissions.set(tenantId, new Set(permissions));
+    /* no-op — permissions are persisted in DB since Sprint 2A */
   }
 
-  assertPermission(
+  async assertPermission(
     tenantId: string,
-    permission: PlatformPermissionCode,
+    permission: PermissionCode,
     actorId?: string,
-  ): void {
+  ): Promise<void> {
     if (actorId === 'system') {
       return;
     }
 
-    const granted = this.tenantRolePermissions.get(tenantId);
-    if (!granted?.has(permission)) {
+    if (!actorId) {
       throw new ForbiddenException(`Missing permission: ${permission}`);
     }
+
+    const granted = await this.rbacRepository.resolvePermissions(tenantId, actorId);
+
+    if (!granted.includes(permission)) {
+      throw new ForbiddenException(`Missing permission: ${permission}`);
+    }
+  }
+
+  async hasPermission(
+    tenantId: string,
+    permission: PermissionCode,
+    userId: string,
+  ): Promise<boolean> {
+    const granted = await this.rbacRepository.resolvePermissions(tenantId, userId);
+    return granted.includes(permission);
   }
 }

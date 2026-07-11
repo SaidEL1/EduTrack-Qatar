@@ -12,7 +12,8 @@ import {
   tenants,
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/audit.service.js';
-import { PermissionEngine } from '../security/permission-engine.service.js';
+import { RbacRepository } from '../identity/infrastructure/rbac.repository.js';
+import { DEFAULT_IDENTITY_PERMISSIONS } from '../identity/permissions/identity.permissions.js';
 import { DEFAULT_PLATFORM_PERMISSIONS } from '../security/permissions/platform.permissions.js';
 
 import { buildAuditEntry } from './platform-audit.helper.js';
@@ -55,7 +56,7 @@ export class PlatformService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDb,
     private readonly auditService: AuditService,
-    private readonly permissionEngine: PermissionEngine,
+    private readonly rbacRepository: RbacRepository,
   ) {}
 
   async createTenant(input: CreateTenantInput, correlationId?: string) {
@@ -68,10 +69,10 @@ export class PlatformService {
       throw new NotFoundException('Failed to create tenant');
     }
 
-    this.permissionEngine.seedTenantPermissions(
-      tenant.id,
-      DEFAULT_PLATFORM_PERMISSIONS,
-    );
+    await this.rbacRepository.bootstrapTenantAdminRole(tenant.id, [
+      ...DEFAULT_PLATFORM_PERMISSIONS,
+      ...DEFAULT_IDENTITY_PERMISSIONS,
+    ]);
 
     await this.auditService.append(
       buildAuditEntry(

@@ -90,6 +90,8 @@ jobs:
     env:
       DATABASE_URL: postgresql://edutrack:edutrack_local_dev@localhost:5432/edutrack
       REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+      SERVICE_NAME: edutrack-api
 
     steps:
       - name: Checkout
@@ -115,13 +117,24 @@ jobs:
           sudo apt-get install -y redis-tools
           redis-cli -h localhost -p 6379 ping | grep PONG
 
+      - name: Generate test JWT keys
+        run: |
+          openssl genrsa -out /tmp/jwt_private.pem 2048
+          openssl rsa -in /tmp/jwt_private.pem -pubout -out /tmp/jwt_public.pem
+          echo "EDUTRACK_JWT_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/jwt_private.pem >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          echo "EDUTRACK_JWT_PUBLIC_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/jwt_public.pem >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Run database migrations
         run: pnpm --filter @edutrack/api db:migrate
 
       - name: Run database seeds
         run: pnpm --filter @edutrack/api db:seed
 
-      - name: Integration tests (tenant isolation + audit)
+      - name: Integration tests (tenant isolation + audit + identity)
         run: pnpm --filter @edutrack/api test -- --testPathPattern=integration
 
   boundary-check:

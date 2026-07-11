@@ -5,8 +5,9 @@ import postgres from 'postgres';
 import { DRIZZLE } from '../../src/database/database.module.js';
 import * as schema from '../../src/database/schema/index.js';
 import { AuditService } from '../../src/modules/audit/audit.service.js';
+import { PermissionCacheService } from '../../src/modules/identity/infrastructure/permission-cache.service.js';
+import { RbacRepository } from '../../src/modules/identity/infrastructure/rbac.repository.js';
 import { PlatformService } from '../../src/modules/platform/platform.service.js';
-import { PermissionEngine } from '../../src/modules/security/permission-engine.service.js';
 
 const DATABASE_URL = process.env['DATABASE_URL'];
 const describeIntegration = DATABASE_URL ? describe : describe.skip;
@@ -30,7 +31,9 @@ describeIntegration('Platform integration (requires DATABASE_URL)', () => {
       providers: [
         PlatformService,
         AuditService,
-        PermissionEngine,
+        RbacRepository,
+        { provide: 'REDIS_URL', useValue: undefined },
+        PermissionCacheService,
         { provide: DRIZZLE, useValue: db },
       ],
     }).compile();

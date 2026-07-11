@@ -48,8 +48,12 @@ async function bootstrap(): Promise<void> {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('EduTrack Platform API')
-    .setDescription('Sprint 1 — Platform foundation (FR-SET-001/004/008)')
-    .setVersion('0.1.0')
+    .setDescription('Sprint 2A — Identity Core + Platform foundation (FR-SET-003)')
+    .setVersion('0.2.0')
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      'access-token',
+    )
     .addApiKey({ type: 'apiKey', name: 'X-Tenant-Id', in: 'header' }, 'tenant')
     .addApiKey(
       { type: 'apiKey', name: 'X-Correlation-Id', in: 'header' },
