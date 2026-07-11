@@ -40,10 +40,10 @@ Thumbs.db
 # Docker volumes (local)
 docker/data/
 
-# Secrets & keys
+# Secrets & keys (runtime only — not packages/config/src/secrets source)
+/secrets/
 *.pem
 *.key
-secrets/
 
 # Misc
 .cache/
