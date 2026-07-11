@@ -2,26 +2,34 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { Global, Module } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import { DRIZZLE } from '../../src/database/database.module.js';
 import * as schema from '../../src/database/schema/index.js';
-import { AuditService } from '../../src/modules/audit/audit.service.js';
+import { AuditModule } from '../../src/modules/audit/audit.module.js';
 import { AuthService } from '../../src/modules/identity/application/auth.service.js';
 import { UserManagementService } from '../../src/modules/identity/application/user-management.service.js';
-import { JwtTokenService } from '../../src/modules/identity/infrastructure/jwt-token.service.js';
-import { PasswordHasherService } from '../../src/modules/identity/infrastructure/password-hasher.service.js';
-import { PermissionCacheService } from '../../src/modules/identity/infrastructure/permission-cache.service.js';
+import { IdentityModule } from '../../src/modules/identity/identity.module.js';
 import { RbacRepository } from '../../src/modules/identity/infrastructure/rbac.repository.js';
-import { RefreshTokenRepository } from '../../src/modules/identity/infrastructure/refresh-token.repository.js';
 import { PlatformService } from '../../src/modules/platform/platform.service.js';
 import { PermissionEngine } from '../../src/modules/security/permission-engine.service.js';
 import { ensureTestJwtKeys, TEST_PASSWORD } from '../helpers/jwt-test-keys.js';
 
 const DATABASE_URL = process.env['DATABASE_URL'];
 const describeIntegration = DATABASE_URL ? describe : describe.skip;
+
+function createTestDatabaseModule(db: ReturnType<typeof drizzle>): new () => object {
+  @Global()
+  @Module({
+    providers: [{ provide: DRIZZLE, useValue: db }],
+    exports: [DRIZZLE],
+  })
+  class TestDatabaseModule {}
+  return TestDatabaseModule;
+}
 
 describeIntegration('Identity integration (requires DATABASE_URL)', () => {
   let platformService: PlatformService;
@@ -56,22 +64,15 @@ describeIntegration('Identity integration (requires DATABASE_URL)', () => {
     sql = postgres(DATABASE_URL, { max: 5 });
     const db = drizzle(sql, { schema });
 
+    const TestDatabaseModule = createTestDatabaseModule(db);
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PlatformService,
-        AuditService,
-        AuthService,
-        UserManagementService,
-        PasswordHasherService,
-        JwtTokenService,
-        RefreshTokenRepository,
-        { provide: 'REDIS_URL', useValue: undefined },
-        PermissionCacheService,
-        RbacRepository,
-        PermissionEngine,
-        { provide: DRIZZLE, useValue: db },
-      ],
-    }).compile();
+      imports: [TestDatabaseModule, AuditModule, IdentityModule],
+      providers: [PlatformService, PermissionEngine],
+    })
+      .overrideProvider('REDIS_URL')
+      .useValue(undefined)
+      .compile();
 
     platformService = module.get(PlatformService);
     authService = module.get(AuthService);
@@ -128,7 +129,8 @@ describeIntegration('Identity integration (requires DATABASE_URL)', () => {
       tenantId,
     });
 
-    const rotated = await authService.refresh(initial.refreshToken);
+    expect(initial.refreshToken).toEqual(expect.any(String));
+    const rotated = await authService.refresh(String(initial.refreshToken));
     expect(rotated.accessToken).toBeDefined();
     expect(rotated.refreshToken).not.toBe(initial.refreshToken);
   });

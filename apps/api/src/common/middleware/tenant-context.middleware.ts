@@ -34,7 +34,15 @@ export class TenantContextMiddleware implements NestMiddleware {
       if (
         route.includes('/auth/login') ||
         route.includes('/auth/refresh') ||
-        route.includes('/auth/logout')
+        route.includes('/auth/logout') ||
+        route.includes('/auth/mfa/verify') ||
+        route.includes('/auth/invitations/accept')
+      ) {
+        return true;
+      }
+      if (
+        route.includes('/identity/account/verify-email/confirm') ||
+        route.includes('/identity/account/password-reset/')
       ) {
         return true;
       }

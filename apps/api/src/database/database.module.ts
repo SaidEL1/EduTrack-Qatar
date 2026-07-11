@@ -3,6 +3,7 @@ import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import * as schema from './schema/index.js';
+import { createTenantAwareDb } from './tenant-aware-drizzle.js';
 
 export const DRIZZLE = Symbol('DRIZZLE');
 export const POSTGRES_CLIENT = Symbol('POSTGRES_CLIENT');
@@ -24,7 +25,8 @@ export type DrizzleDb = PostgresJsDatabase<typeof schema>;
     {
       provide: DRIZZLE,
       inject: [POSTGRES_CLIENT],
-      useFactory: (client: postgres.Sql): DrizzleDb => drizzle(client, { schema }),
+      useFactory: (client: postgres.Sql): DrizzleDb =>
+        createTenantAwareDb(drizzle(client, { schema })),
     },
   ],
   exports: [DRIZZLE, POSTGRES_CLIENT],

@@ -14,6 +14,7 @@ import {
 import { Inject } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
 
+import { definedFields } from '../../../common/utils/defined-fields.js';
 import { DRIZZLE, type DrizzleDb } from '../../../database/database.module.js';
 import { organizationMembers, users } from '../../../database/schema/index.js';
 import { AuditService } from '../../audit/audit.service.js';
@@ -22,9 +23,18 @@ import { JwtTokenService } from '../infrastructure/jwt-token.service.js';
 import { PasswordHasherService } from '../infrastructure/password-hasher.service.js';
 import { RefreshTokenRepository } from '../infrastructure/refresh-token.repository.js';
 import {
+  LoginEventRepository,
+  SecurityEventRepository,
+} from '../infrastructure/security-event.repository.js';
+import {
   generateFamilyId,
   generateOpaqueToken,
 } from '../infrastructure/token.utils.js';
+
+import { AccountSecurityService } from './account-security.service.js';
+import { MfaService } from './mfa.service.js';
+import { SessionManagementService } from './session-management.service.js';
+import { TenantSecurityPolicyService } from './tenant-security-policy.service.js';
 
 const ACCESS_TOKEN_TTL_SECONDS = 900;
 const REFRESH_TOKEN_TTL_SECONDS = 604_800;
@@ -46,6 +56,14 @@ export interface TokenPair {
   readonly tokenType: 'Bearer';
 }
 
+export interface MfaRequiredResponse {
+  readonly mfaRequired: true;
+  readonly challengeToken: string;
+  readonly expiresIn: number;
+}
+
+export type LoginResult = TokenPair | MfaRequiredResponse;
+
 /** Authentication orchestration — TDR-011 / NFR-LOG-001 */
 @Injectable()
 export class AuthService {
@@ -64,11 +82,24 @@ export class AuthService {
     private readonly jwtTokenService: JwtTokenService,
     private readonly refreshTokenRepository: RefreshTokenRepository,
     private readonly auditService: AuditService,
+    private readonly mfaService: MfaService,
+    private readonly accountSecurityService: AccountSecurityService,
+    private readonly sessionManagementService: SessionManagementService,
+    private readonly loginEventRepository: LoginEventRepository,
+    private readonly securityEventRepository: SecurityEventRepository,
+    private readonly tenantSecurityPolicyService: TenantSecurityPolicyService,
   ) {}
 
-  async login(input: LoginInput, correlationId?: string): Promise<TokenPair> {
+  async login(input: LoginInput, correlationId?: string): Promise<LoginResult> {
     const emailResult = Email.create(input.email);
     if (!emailResult.ok) {
+      await this.recordLoginEvent({
+        email: input.email,
+        outcome: 'failure',
+        tenantId: input.tenantId,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -78,10 +109,25 @@ export class AuthService {
       .where(and(eq(users.email, emailResult.value.value), isNull(users.deletedAt)));
 
     if (!user) {
+      await this.recordLoginEvent({
+        email: emailResult.value.value,
+        outcome: 'failure',
+        tenantId: input.tenantId,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
     if (user.status === 'locked' && user.lockedUntil && user.lockedUntil > new Date()) {
+      await this.recordLoginEvent({
+        tenantId: input.tenantId,
+        userId: user.id,
+        email: user.email,
+        outcome: 'locked',
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
       throw new ForbiddenException('Account is temporarily locked');
     }
 
@@ -89,12 +135,22 @@ export class AuthService {
       throw new ForbiddenException(`Account is ${user.status}`);
     }
 
+    this.accountSecurityService.assertPasswordNotExpired(user);
+
     const passwordValid = await this.passwordHasher.verify(
       user.passwordHash,
       input.password,
     );
     if (!passwordValid) {
       await this.recordFailedLogin(user.id, user.failedLoginAttempts);
+      await this.recordLoginEvent({
+        tenantId: input.tenantId,
+        userId: user.id,
+        email: user.email,
+        outcome: 'failure',
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -123,32 +179,82 @@ export class AuthService {
       })
       .where(eq(users.id, user.id));
 
-    const tokens = await this.issueTokenPair(
+    const tenantPolicy = await this.tenantSecurityPolicyService.getPolicy(
+      input.tenantId,
+    );
+    if (tenantPolicy.mfaRequired && !user.mfaEnabled) {
+      throw new ForbiddenException('MFA must be enabled for this organization');
+    }
+
+    if (user.mfaEnabled) {
+      const challengeToken = await this.mfaService.createLoginChallenge({
+        userId: user.id,
+        tenantId: input.tenantId,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
+      await this.recordLoginEvent({
+        tenantId: input.tenantId,
+        userId: user.id,
+        email: user.email,
+        outcome: 'mfa_required',
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      });
+      return {
+        mfaRequired: true,
+        challengeToken,
+        expiresIn: 300,
+      };
+    }
+
+    const tokens = await this.completeLogin(
       user.id,
       input.tenantId,
       user.email,
       input.ipAddress,
       input.userAgent,
-    );
-
-    await this.auditService.append(
-      buildAuditEntry(
-        {
-          tenantId: input.tenantId,
-          actorId: user.id,
-          action: 'auth.login.success',
-          entityType: 'user',
-          entityId: user.id,
-          afterState: { email: user.email },
-          ...(input.ipAddress !== undefined ? { ipAddress: input.ipAddress } : {}),
-        },
-        correlationId,
-      ),
+      correlationId,
     );
 
     this.logger.info({ userId: user.id, tenantId: input.tenantId }, 'User logged in');
-
     return tokens;
+  }
+
+  async verifyMfaAndLogin(
+    challengeToken: string,
+    code: string,
+    ipAddress?: string,
+    userAgent?: string,
+    correlationId?: string,
+  ): Promise<TokenPair> {
+    const { userId, tenantId } = await this.mfaService.verifyLoginChallenge(
+      challengeToken,
+      code,
+    );
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, userId), isNull(users.deletedAt)));
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    await this.recordLoginEvent({
+      tenantId,
+      userId,
+      email: user.email,
+      outcome: 'mfa_success',
+      ipAddress,
+      userAgent,
+    });
+    return this.completeLogin(
+      userId,
+      tenantId,
+      user.email,
+      ipAddress,
+      userAgent,
+      correlationId,
+    );
   }
 
   async refresh(
@@ -156,6 +262,37 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<TokenPair> {
+    const anyToken = await this.refreshTokenRepository.findByHash(rawRefreshToken);
+    if (!anyToken) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (anyToken.revokedAt) {
+      await this.refreshTokenRepository.revokeFamily(
+        anyToken.familyId,
+        anyToken.userId,
+      );
+      await this.securityEventRepository.record({
+        userId: anyToken.userId,
+        eventType: 'auth.refresh_token.reuse',
+        severity: 'critical',
+        metadata: { familyId: anyToken.familyId },
+        ...definedFields({
+          tenantId: anyToken.tenantId ?? undefined,
+          ipAddress,
+        }),
+      });
+      await this.recordLoginEvent({
+        userId: anyToken.userId,
+        email: '',
+        outcome: 'token_reuse',
+        ipAddress,
+        userAgent,
+        tenantId: anyToken.tenantId ?? undefined,
+      });
+      throw new UnauthorizedException('Refresh token reuse detected');
+    }
+
     const stored = await this.refreshTokenRepository.findValid(rawRefreshToken);
     if (!stored) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -171,6 +308,8 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
+    this.accountSecurityService.assertPasswordNotExpired(user);
+
     const tenantId = stored.tenantId;
     if (!tenantId) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -178,7 +317,7 @@ export class AuthService {
 
     await this.refreshTokenRepository.revoke(stored.id);
 
-    return this.issueTokenPair(
+    const tokens = await this.issueTokenPair(
       user.id,
       tenantId,
       user.email,
@@ -186,6 +325,15 @@ export class AuthService {
       userAgent,
       stored.familyId,
     );
+
+    await this.trackUserSession({
+      userId: user.id,
+      tenantId,
+      familyId: stored.familyId,
+      ...definedFields({ ipAddress, userAgent }),
+    });
+
+    return tokens;
   }
 
   async logout(rawRefreshToken: string, correlationId?: string): Promise<void> {
@@ -197,6 +345,7 @@ export class AuthService {
     await this.refreshTokenRepository.revoke(stored.id);
 
     if (stored.tenantId) {
+      await this.sessionManagementService.revokeByFamilyId(stored.familyId);
       await this.auditService.append(
         buildAuditEntry(
           {
@@ -217,6 +366,48 @@ export class AuthService {
     if (!result.ok) {
       throw new BadRequestException(result.error.message);
     }
+  }
+
+  private async completeLogin(
+    userId: string,
+    tenantId: string,
+    email: string,
+    ipAddress?: string,
+    userAgent?: string,
+    correlationId?: string,
+  ): Promise<TokenPair> {
+    const tokens = await this.issueTokenPair(
+      userId,
+      tenantId,
+      email,
+      ipAddress,
+      userAgent,
+    );
+
+    await this.recordLoginEvent({
+      tenantId,
+      userId,
+      email,
+      outcome: 'success',
+      ...definedFields({ ipAddress, userAgent }),
+    });
+
+    await this.auditService.append(
+      buildAuditEntry(
+        {
+          tenantId,
+          actorId: userId,
+          action: 'auth.login.success',
+          entityType: 'user',
+          entityId: userId,
+          afterState: { email },
+          ...(ipAddress !== undefined ? { ipAddress } : {}),
+        },
+        correlationId,
+      ),
+    );
+
+    return tokens;
   }
 
   private async issueTokenPair(
@@ -244,6 +435,13 @@ export class AuthService {
       expiresAt,
       ...(ipAddress !== undefined ? { ipAddress } : {}),
       ...(userAgent !== undefined ? { userAgent } : {}),
+    });
+
+    await this.trackUserSession({
+      userId,
+      tenantId,
+      familyId,
+      ...definedFields({ ipAddress, userAgent }),
     });
 
     return {
@@ -279,5 +477,50 @@ export class AuthService {
     }
 
     await this.db.update(users).set(updates).where(eq(users.id, userId));
+  }
+
+  private async recordLoginEvent(input: {
+    readonly email: string;
+    readonly outcome:
+      | 'locked'
+      | 'success'
+      | 'failure'
+      | 'mfa_required'
+      | 'mfa_success'
+      | 'mfa_failure'
+      | 'token_reuse';
+    readonly tenantId?: string | undefined;
+    readonly userId?: string | undefined;
+    readonly ipAddress?: string | undefined;
+    readonly userAgent?: string | undefined;
+  }): Promise<void> {
+    await this.loginEventRepository.record({
+      email: input.email,
+      outcome: input.outcome,
+      ...definedFields({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      }),
+    });
+  }
+
+  private trackUserSession(input: {
+    readonly userId: string;
+    readonly tenantId: string;
+    readonly familyId: string;
+    readonly ipAddress?: string | undefined;
+    readonly userAgent?: string | undefined;
+  }): Promise<void> {
+    return this.sessionManagementService.trackSession({
+      userId: input.userId,
+      tenantId: input.tenantId,
+      familyId: input.familyId,
+      ...definedFields({
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      }),
+    });
   }
 }

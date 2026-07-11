@@ -13,6 +13,15 @@ export const apiEnvSchema = baseEnvSchema.extend({
     .default('true')
     .transform((v) => v === 'true'),
   CORS_ORIGINS: z.string().default('*'),
+  REDIS_REQUIRED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  APP_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
+  EMAIL_RETURN_TOKENS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

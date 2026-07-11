@@ -1,12 +1,14 @@
 import { Body, Controller, Get, Headers, Param, Post, Put } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { SkipTenantRls } from '../../common/decorators/skip-tenant-rls.decorator.js';
 import { CORRELATION_ID_HEADER } from '../../common/middleware/correlation-id.middleware.js';
 import { TENANT_ID_HEADER } from '../../common/middleware/tenant-context.middleware.js';
 import { Public } from '../security/decorators/public.decorator.js';
 import { RequirePermission } from '../security/decorators/require-permission.decorator.js';
 import { PLATFORM_PERMISSIONS } from '../security/permissions/platform.permissions.js';
 
+import { SecurityBootstrapService } from './application/security-bootstrap.service.js';
 import {
   CreateAcademicYearDto,
   CreateCampusDto,
@@ -20,9 +22,21 @@ import { PlatformService } from './platform.service.js';
 @ApiTags('Platform')
 @Controller('platform')
 export class PlatformController {
-  constructor(private readonly platformService: PlatformService) {}
+  constructor(
+    private readonly platformService: PlatformService,
+    private readonly securityBootstrapService: SecurityBootstrapService,
+  ) {}
 
   @Public()
+  @SkipTenantRls()
+  @Get('security/audit')
+  @ApiOperation({ summary: 'Security configuration audit (operator)' })
+  securityAudit() {
+    return this.securityBootstrapService.auditConfiguration();
+  }
+
+  @Public()
+  @SkipTenantRls()
   @Post('tenants')
   @ApiOperation({ summary: 'Provision tenant (operator)' })
   createTenant(
@@ -33,6 +47,7 @@ export class PlatformController {
   }
 
   @Public()
+  @SkipTenantRls()
   @Get('tenants')
   @ApiOperation({ summary: 'List tenants (operator — Sprint 1 internal)' })
   listTenants() {

@@ -62,4 +62,24 @@ describe('RefreshTokenRepository', () => {
     await repository.revoke('rt-1');
     expect(db.update).toHaveBeenCalled();
   });
+
+  it('finds token by hash including revoked tokens', async () => {
+    db.select.mockReturnValue({
+      from: jest.fn().mockReturnValue({
+        where: jest.fn().mockResolvedValue([{ id: 'rt-1', revokedAt: new Date() }]),
+      }),
+    });
+
+    const row = await repository.findByHash('raw-token-value');
+    expect(row?.id).toBe('rt-1');
+  });
+
+  it('revokes all tokens for user in tenant', async () => {
+    db.update.mockReturnValue({
+      set: jest.fn().mockReturnValue({ where: jest.fn().mockResolvedValue(undefined) }),
+    });
+
+    await repository.revokeAllForUser('user-1', 'tenant-1');
+    expect(db.update).toHaveBeenCalled();
+  });
 });

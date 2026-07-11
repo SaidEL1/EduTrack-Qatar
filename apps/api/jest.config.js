@@ -13,8 +13,12 @@ export default {
   collectCoverageFrom: [
     'src/modules/identity/application/**/*.ts',
     'src/modules/identity/infrastructure/**/*.ts',
+    'src/modules/notification/**/*.ts',
+    'src/modules/platform/application/**/*.ts',
     'src/modules/security/**/*.ts',
     'src/common/utils/**/*.ts',
+    'src/common/interceptors/**/*.ts',
+    'src/common/middleware/origin-validation.middleware.ts',
     '!src/**/*.d.ts',
     '!src/modules/security/decorators/**',
   ],

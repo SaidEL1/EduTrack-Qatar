@@ -12,6 +12,7 @@ import {
   tenants,
 } from '../../database/schema/index.js';
 import { AuditService } from '../audit/audit.service.js';
+import { TenantSecurityPolicyService } from '../identity/application/tenant-security-policy.service.js';
 import { RbacRepository } from '../identity/infrastructure/rbac.repository.js';
 import { DEFAULT_IDENTITY_PERMISSIONS } from '../identity/permissions/identity.permissions.js';
 import { DEFAULT_PLATFORM_PERMISSIONS } from '../security/permissions/platform.permissions.js';
@@ -57,6 +58,7 @@ export class PlatformService {
     @Inject(DRIZZLE) private readonly db: DrizzleDb,
     private readonly auditService: AuditService,
     private readonly rbacRepository: RbacRepository,
+    private readonly tenantSecurityPolicyService: TenantSecurityPolicyService,
   ) {}
 
   async createTenant(input: CreateTenantInput, correlationId?: string) {
@@ -73,6 +75,8 @@ export class PlatformService {
       ...DEFAULT_PLATFORM_PERMISSIONS,
       ...DEFAULT_IDENTITY_PERMISSIONS,
     ]);
+
+    await this.tenantSecurityPolicyService.ensureDefaults(tenant.id);
 
     await this.auditService.append(
       buildAuditEntry(

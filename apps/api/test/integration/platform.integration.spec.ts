@@ -5,8 +5,10 @@ import postgres from 'postgres';
 import { DRIZZLE } from '../../src/database/database.module.js';
 import * as schema from '../../src/database/schema/index.js';
 import { AuditService } from '../../src/modules/audit/audit.service.js';
+import { TenantSecurityPolicyService } from '../../src/modules/identity/application/tenant-security-policy.service.js';
 import { PermissionCacheService } from '../../src/modules/identity/infrastructure/permission-cache.service.js';
 import { RbacRepository } from '../../src/modules/identity/infrastructure/rbac.repository.js';
+import { TenantSecurityPolicyRepository } from '../../src/modules/identity/infrastructure/tenant-security-policy.repository.js';
 import { PlatformService } from '../../src/modules/platform/platform.service.js';
 
 const DATABASE_URL = process.env['DATABASE_URL'];
@@ -32,6 +34,8 @@ describeIntegration('Platform integration (requires DATABASE_URL)', () => {
         PlatformService,
         AuditService,
         RbacRepository,
+        TenantSecurityPolicyService,
+        TenantSecurityPolicyRepository,
         { provide: 'REDIS_URL', useValue: undefined },
         PermissionCacheService,
         { provide: DRIZZLE, useValue: db },

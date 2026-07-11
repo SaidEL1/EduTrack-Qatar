@@ -4,11 +4,13 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
 import { MetricsInterceptor } from './common/interceptors/metrics.interceptor.js';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware.js';
+import { OriginValidationMiddleware } from './common/middleware/origin-validation.middleware.js';
 import { TenantContextMiddleware } from './common/middleware/tenant-context.middleware.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
+import { NotificationModule } from './modules/notification/notification.module.js';
 import { PlatformModule } from './modules/platform/platform.module.js';
 import { SecurityModule } from './modules/security/security.module.js';
 
@@ -16,6 +18,7 @@ import { SecurityModule } from './modules/security/security.module.js';
   imports: [
     DatabaseModule,
     IdentityModule,
+    NotificationModule,
     SecurityModule,
     HealthModule,
     AuditModule,
@@ -28,6 +31,12 @@ import { SecurityModule } from './modules/security/security.module.js';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(CorrelationIdMiddleware, TenantContextMiddleware).forRoutes('*');
+    consumer
+      .apply(
+        CorrelationIdMiddleware,
+        OriginValidationMiddleware,
+        TenantContextMiddleware,
+      )
+      .forRoutes('*');
   }
 }

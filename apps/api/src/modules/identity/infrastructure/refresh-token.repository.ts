@@ -56,6 +56,28 @@ export class RefreshTokenRepository {
     return row;
   }
 
+  async findByHash(rawToken: string) {
+    const tokenHash = hashToken(rawToken);
+    const [row] = await this.db
+      .select()
+      .from(refreshTokens)
+      .where(eq(refreshTokens.tokenHash, tokenHash));
+    return row ?? null;
+  }
+
+  async revokeAllForUser(userId: string, tenantId: string): Promise<void> {
+    await this.db
+      .update(refreshTokens)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(refreshTokens.userId, userId),
+          eq(refreshTokens.tenantId, tenantId),
+          isNull(refreshTokens.revokedAt),
+        ),
+      );
+  }
+
   async revoke(id: string, replacedBy?: string): Promise<void> {
     await this.db
       .update(refreshTokens)

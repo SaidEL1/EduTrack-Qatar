@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 
-import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 
 export const PERMISSION_CACHE_TTL_SECONDS = 60;
 
@@ -20,12 +20,13 @@ const IORedis = require('ioredis') as new (
 
 /** Redis-backed permission cache — TDR-007 / AC-SET-001 */
 @Injectable()
-export class PermissionCacheService implements OnModuleDestroy {
+export class PermissionCacheService implements OnModuleDestroy, OnModuleInit {
   private readonly redis: InstanceType<typeof IORedis> | undefined;
   private readonly memoryFallback = new Map<
     string,
     { value: string[]; expiresAt: number }
   >();
+  private readonly redisRequired = process.env['REDIS_REQUIRED'] === 'true';
 
   constructor(@Inject('REDIS_URL') redisUrl: string | undefined) {
     if (redisUrl) {
@@ -36,6 +37,12 @@ export class PermissionCacheService implements OnModuleDestroy {
       void this.redis.connect().catch(() => {
         /* fall back to in-memory when Redis unavailable */
       });
+    }
+  }
+
+  onModuleInit(): void {
+    if (this.redisRequired && !this.redis) {
+      throw new Error('REDIS_URL is required when REDIS_REQUIRED=true');
     }
   }
 

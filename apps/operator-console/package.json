@@ -6,11 +6,11 @@
   "type": "module",
   "description": "Next.js internal operator console",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json --watch",
+    "build": "node ../../scripts/run-tsc.mjs -p tsconfig.build.json",
+    "dev": "node ../../scripts/run-tsc.mjs -p tsconfig.build.json --watch",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "node ../../scripts/run-tsc.mjs -p tsconfig.json --noEmit",
     "test": "jest --passWithNoTests",
     "test:coverage": "jest --coverage --passWithNoTests",
     "clean": "rimraf dist coverage"

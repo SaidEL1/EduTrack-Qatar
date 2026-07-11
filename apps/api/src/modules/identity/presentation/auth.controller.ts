@@ -1,6 +1,5 @@
-import { Body, Controller, Headers, Post, Req } from '@nestjs/common';
+import { Body, Controller, Headers, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
 
 import { CORRELATION_ID_HEADER } from '../../../common/middleware/correlation-id.middleware.js';
 import { Public } from '../../security/decorators/public.decorator.js';
@@ -11,6 +10,7 @@ import {
   RefreshTokenDto,
   TokenResponseDto,
 } from '../dto/auth.dto.js';
+import { MfaVerifyDto } from '../dto/security.dto.js';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -19,10 +19,9 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  @ApiOperation({ summary: 'Authenticate user and issue token pair (TDR-011)' })
+  @ApiOperation({ summary: 'Authenticate user — returns tokens or MFA challenge' })
   login(
     @Body() body: LoginDto,
-    @Req() request: Request,
     @Headers(CORRELATION_ID_HEADER) correlationId?: string,
   ): Promise<TokenResponseDto> {
     return this.authService.login(
@@ -30,11 +29,23 @@ export class AuthController {
         email: body.email,
         password: body.password,
         tenantId: body.tenantId,
-        ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
-        ...(request.headers['user-agent'] !== undefined
-          ? { userAgent: request.headers['user-agent'] }
-          : {}),
       },
+      correlationId,
+    ) as Promise<TokenResponseDto>;
+  }
+
+  @Public()
+  @Post('mfa/verify')
+  @ApiOperation({ summary: 'Complete MFA step-up and issue token pair' })
+  verifyMfa(
+    @Body() body: MfaVerifyDto,
+    @Headers(CORRELATION_ID_HEADER) correlationId?: string,
+  ): Promise<TokenResponseDto> {
+    return this.authService.verifyMfaAndLogin(
+      body.challengeToken,
+      body.code,
+      undefined,
+      undefined,
       correlationId,
     );
   }
@@ -42,15 +53,8 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @ApiOperation({ summary: 'Rotate refresh token and issue new access token' })
-  refresh(
-    @Body() body: RefreshTokenDto,
-    @Req() request: Request,
-  ): Promise<TokenResponseDto> {
-    return this.authService.refresh(
-      body.refreshToken,
-      request.ip,
-      request.headers['user-agent'],
-    );
+  refresh(@Body() body: RefreshTokenDto): Promise<TokenResponseDto> {
+    return this.authService.refresh(body.refreshToken);
   }
 
   @Public()

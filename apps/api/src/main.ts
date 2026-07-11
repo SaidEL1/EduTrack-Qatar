@@ -36,6 +36,21 @@ async function bootstrap(): Promise<void> {
   });
 
   app.use(helmet());
+
+  const corsOrigins = env.CORS_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: corsOrigins.includes('*') ? true : corsOrigins,
+    credentials: true,
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Tenant-Id',
+      'X-Correlation-Id',
+    ],
+  });
+
   app.enableShutdownHooks();
   app.setGlobalPrefix(env.API_PREFIX);
   app.useGlobalPipes(
@@ -48,8 +63,8 @@ async function bootstrap(): Promise<void> {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('EduTrack Platform API')
-    .setDescription('Sprint 2A — Identity Core + Platform foundation (FR-SET-003)')
-    .setVersion('0.2.0')
+    .setDescription('Sprint 2C — Identity Security Hardening + Platform foundation')
+    .setVersion('0.3.0')
     .addBearerAuth(
       { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       'access-token',

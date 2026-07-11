@@ -59,7 +59,7 @@
 
 - [x] JWT key generation step in integration job
 - [x] Identity integration tests in CI pipeline
-- [ ] GitHub Actions green (requires push)
+- [x] GitHub Actions green — [Run #6](https://github.com/SaidEL1/EduTrack-Qatar/actions/runs/29168128710)
 
 ## API Smoke Test
 
