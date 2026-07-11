@@ -6,7 +6,7 @@ export const TENANT_ID_HEADER = 'x-tenant-id';
 @Injectable()
 export class TenantContextMiddleware implements NestMiddleware {
   use(request: Request, _response: Response, next: NextFunction): void {
-    const path = request.originalUrl.split('?')[0];
+    const path = request.originalUrl.split('?')[0] ?? request.originalUrl;
 
     if (this.isExempt(path, request.method)) {
       next();
