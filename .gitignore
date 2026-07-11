@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Environment (never commit secrets — EDU-ARCH-005 §8)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Testing
+.nyc_output/
+
+# Docker volumes (local)
+docker/data/
+
+# Secrets & keys
+*.pem
+*.key
+secrets/
+
+# Misc
+.cache/
+tmp/
+temp/

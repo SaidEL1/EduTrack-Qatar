@@ -1,0 +1,17 @@
+# Prettier ignore patterns
+node_modules
+dist
+coverage
+.turbo
+.next
+pnpm-lock.yaml
+CHANGELOG.md
+
+# Approved product documents (formatting frozen at G7)
+docs/01_PRODUCT_DISCOVERY.md
+docs/02_PRODUCT_STRATEGY.md
+docs/03_PRODUCT_REQUIREMENTS_DOCUMENT.md
+docs/04_PRODUCT_EXPERIENCE_SPECIFICATION.md
+docs/05_TECHNICAL_ARCHITECTURE.md
+docs/06_MASTER_PRODUCT_SPECIFICATION.md
+docs/07_FINAL_IMPLEMENTATION_BLUEPRINT.md

@@ -1,0 +1,9 @@
+{
+  "extends": "@edutrack/typescript-config/react-native.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}
